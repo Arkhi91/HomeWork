@@ -9,7 +9,7 @@ class Program
         int[] sizes = { 100000, 1000000, 10000000 };
         var table = new System.Text.StringBuilder();
 
-        table.AppendLine("│ Размер массива │ Последовательное │ Паралл. (Task) │ PLINQ │");
+        table.AppendLine("│ Размер массива │ Последовательное │ Паралл. (Thread) │ PLINQ │");
 
         foreach (int size in sizes)
         {
@@ -17,7 +17,7 @@ class Program
             int[] array = GenerateArray(size);
 
             long seq = Measure(SequentialSum, array, "Последовательное");
-            long par = Measure(ParallelTaskSum, array, "Параллельное (Task)");
+            long par = Measure(ParallelTaskSum, array, "Параллельное (Thread)");
             long plinq = Measure(PlinqSum, array, "PLINQ (AsParallel)");
 
             table.AppendLine($"│ {size,14:N0} │ {seq,13} мс │ {par,11} мс │ {plinq,2} мс │");
@@ -57,24 +57,34 @@ class Program
     {
         int cores = Environment.ProcessorCount;
         int chunk = Math.Max(1, arr.Length / cores);
-        long total = 0;
 
-        var tasks = new Task<long>[cores];
+        var threads = new Thread[cores];
+        var partialSums = new long[cores];
+
         for (int i = 0; i < cores; i++)
         {
-            int start = i * chunk;
-            int end = (i == cores - 1) ? arr.Length : start + chunk;
-            tasks[i] = Task.Run(() =>
+            int index = i;
+            int start = index * chunk;
+            int end = (index == cores - 1) ? arr.Length : start + chunk;
+
+            threads[index] = new Thread(() =>
             {
                 long sum = 0;
                 for (int j = start; j < end; j++)
                     sum += arr[j];
-                return sum;
+                partialSums[index] = sum;
             });
+
+            threads[index].Start();
         }
 
-        foreach (var t in tasks)
-            total += t.Result;
+        for (int i = 0; i < cores; i++)
+            threads[i].Join();
+
+        long total = 0;
+        for (int i = 0; i < cores; i++)
+            total += partialSums[i];
+
         return total;
     }
 
